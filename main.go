@@ -4,13 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io/ioutil"
 	"log"
 	"os"
 	"sort"
 	"strings"
+
+	"golang.org/x/mod/modfile"
 )
 
 var (
+	pkgsInGoMod []string
 	pkgs        map[string]*build.Package
 	erroredPkgs map[string]bool
 	ids         map[string]string
@@ -23,6 +27,7 @@ var (
 
 	ignoreStdlib   = flag.Bool("nostdlib", false, "ignore packages in the Go standard library")
 	ignoreVendor   = flag.Bool("novendor", false, "ignore packages in the vendor directory")
+	ignoreGoMod    bool
 	stopOnError    = flag.Bool("stoponerror", true, "stop on package import errors")
 	withGoroot     = flag.Bool("withgoroot", false, "show dependencies of packages in the Go standard library")
 	ignorePrefixes = flag.String("ignoreprefixes", "", "a comma-separated list of prefixes to ignore")
@@ -39,6 +44,7 @@ var (
 
 func init() {
 	flag.BoolVar(ignoreStdlib, "s", false, "(alias for -nostdlib) ignore packages in the Go standard library")
+	flag.BoolVar(&ignoreGoMod, "nogomod", false, "ignore packages in go.mod file")
 	flag.StringVar(ignorePrefixes, "p", "", "(alias for -ignoreprefixes) a comma-separated list of prefixes to ignore")
 	flag.StringVar(ignorePackages, "i", "", "(alias for -ignorepackages) a comma-separated list of packages to ignore")
 	flag.StringVar(onlyPrefix, "o", "", "(alias for -onlyprefixes) a comma-separated list of prefixes to include")
@@ -79,6 +85,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to get cwd: %s", err)
 	}
+
+	if ignoreGoMod {
+		readGoMod(cwd)
+	}
+
 	for _, a := range args {
 		if err := processPackage(cwd, a, 0, "", *stopOnError); err != nil {
 			log.Fatal(err)
@@ -187,6 +198,26 @@ func processPackage(root string, pkgName string, level int, importedBy string, s
 			}
 		}
 	}
+
+	return nil
+}
+
+func readGoMod(root string) error {
+	filePath := root + "/go.mod"
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Fatalf("error reading file in %s\n", err)
+	}
+
+	file, err := modfile.Parse(filePath, data, nil)
+	if err != nil {
+		log.Fatal("error parsing go.mod: ", err)
+	}
+
+	for _, r := range file.Require {
+		pkgsInGoMod = append(pkgsInGoMod, r.Mod.Path)
+	}
+
 	return nil
 }
 
@@ -244,7 +275,7 @@ func isIgnored(pkg *build.Package) bool {
 	if *ignoreVendor && isVendored(pkg.ImportPath) {
 		return true
 	}
-	return ignored[normalizeVendor(pkg.ImportPath)] || (pkg.Goroot && *ignoreStdlib) || hasPrefixes(normalizeVendor(pkg.ImportPath), ignoredPrefixes)
+	return ignored[normalizeVendor(pkg.ImportPath)] || (pkg.Goroot && *ignoreStdlib) || hasPrefixes(normalizeVendor(pkg.ImportPath), ignoredPrefixes) || isInGoModule(pkg.ImportPath)
 }
 
 func hasBuildErrors(pkg *build.Package) bool {
@@ -274,4 +305,14 @@ func isVendored(path string) bool {
 func normalizeVendor(path string) string {
 	pieces := strings.Split(path, "vendor/")
 	return pieces[len(pieces)-1]
+}
+
+func isInGoModule(path string) bool {
+	for i := range pkgsInGoMod {
+		if strings.Contains(path, pkgsInGoMod[i]) {
+			return true
+		}
+	}
+
+	return false
 }
