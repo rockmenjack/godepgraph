@@ -8,7 +8,7 @@ go get github.com/rockmejack/godepgraph
 
 ## Use
 
-cd to the project of interested, run:
+cd to the project of interest, run:
 ```
 godepgraph -nogomod <some package path>
 ```
