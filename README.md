@@ -1,9 +1,10 @@
 # godepgraph
 
-This is a fork of github.com/kisielk/godepgraph with ignoring go.mod supported.
+This is a fork of [github.com/kisielk/godepgraph](github.com/kisielk/godepgraph) with ignoring go.mod supported.
 ## Install
-
-    go get github.com/rockmejack/godepgraph
+```
+go get github.com/rockmejack/godepgraph
+```
 
 ## Use
 
